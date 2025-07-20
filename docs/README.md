@@ -91,6 +91,65 @@ On the first run, the application has no API keys or secure authentication token
 
 Your gateway is now fully configured and ready to use.
 
+## Deployment with Vercel (Recommended)
+
+Deploying to Vercel is the recommended method for this project, as it leverages the platform's seamless integration with Next.js and serverless databases.
+
+### 1. Fork the Repository
+
+Click the "Fork" button at the top right of this page to create your own copy of the repository.
+
+### 2. Create a New Project on Vercel
+
+- Go to your Vercel dashboard and click "Add New... -> Project".
+- Import the repository you just forked from GitHub.
+
+### 3. Configure the Vercel Project
+
+#### a. Set Up the Database
+
+- While still in the project creation wizard, navigate to the "Storage" tab.
+- Click "Add" next to "Postgres" to create a new Vercel Postgres database.
+- Accept the terms and click "Create & Connect". Vercel will automatically create the database and set the required environment variables (`POSTGRES_*`) for you.
+
+#### b. Add Required Environment Variables
+
+- Navigate to the "Environment Variables" section.
+- The `POSTGRES_*` variables will already be there. You need to add the following:
+  - **`DATABASE_URL`**: This variable is still required by Prisma at build time. Set its value to the same value as `POSTGRES_PRISMA_URL`. You can copy it from the variable list above.
+  - **`CRON_SECRET`** (Recommended): Set a long, random, and secure string. This will be used to protect the health check endpoint.
+
+#### c. Override the Build Command
+
+- This is the most critical step. In the "Build & Development Settings" section, find the **Build Command** field.
+- Click "Override" and set the command to:
+  ```bash
+  npx prisma migrate deploy && next build
+  ```
+- This command ensures that every time you deploy, Prisma applies any new database migrations _before_ building the application.
+
+### 4. Deploy
+
+- Click the "Deploy" button. Vercel will now build and deploy your project.
+
+### 5. First-Time Setup
+
+- Once the deployment is complete, visit your new Vercel URL (e.g., `https://your-project-name.vercel.app`).
+- Follow the exact same "First-Time Setup via Web UI" steps as in the local development guide to set your admin password and add your Gemini API keys.
+
+### 6. Configure Cron Job on Vercel
+
+- To enable automatic health checks for your API keys, go to the "Cron Jobs" tab in your Vercel project dashboard.
+- Create a new cron job with the following settings:
+  - **Schedule**: We recommend `0 * * * *` (once every hour).
+  - **URL to hit**: Use the `GET` method and enter the following URL, replacing `YOUR_CRON_SECRET` with the value you set in your environment variables:
+    ```
+    https://YOUR_APP_URL/api/cron/health-check
+    ```
+    You must also add an `Authorization` header with the value `Bearer YOUR_CRON_SECRET`. Vercel's UI has a dedicated section for adding headers to cron job requests.
+
+Your application is now fully deployed and configured on Vercel.
+
 ## Deployment with Docker
 
 This project is a **stateful application** that requires a persistent database. The provided `Dockerfile` and `docker-compose.yml` are optimized for production deployment.
@@ -120,7 +179,7 @@ This project is a **stateful application** that requires a persistent database. 
     CRON_SECRET="your-long-random-secret-token"
     ```
 
-    You only need to add other variables like `GOOGLE_API_HOST` if you need to override the defaults. All other settings are managed via the Web UI after deployment.
+    **Important**: You only need to set `DATABASE_URL` and `CRON_SECRET` for Docker deployment. Variables like `POSTGRES_PRISMA_URL` are for Vercel deployment only. All other settings are managed via the Web UI after deployment.
 
 2.  **Build and run the container**:
 

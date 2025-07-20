@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import "server-only";
 
 declare global {
@@ -6,21 +6,24 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const createPrismaClient = () => {
-  const logLevels: Prisma.LogLevel[] =
-    process.env.NODE_ENV === "production"
-      ? ["warn", "error"]
-      : ["query", "info", "warn", "error"];
-
-  const client = new PrismaClient({
-    log: logLevels,
+const prisma =
+  global.prisma ||
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === "production"
+        ? ["warn", "error"]
+        : ["query", "info", "warn", "error"],
+    datasources: {
+      db: {
+        url: process.env.VERCEL
+          ? process.env.POSTGRES_PRISMA_URL
+          : process.env.DATABASE_URL,
+      },
+    },
   });
-
-  return client;
-};
-
-export const prisma = global.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
 }
+
+export { prisma };
