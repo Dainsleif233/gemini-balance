@@ -99,7 +99,7 @@
 ### `next.config.ts`
 
 - **优点:**
-  - `output: "standalone"` 和 `outputFileTracingIncludes` 的配置是正确的，表明开发者对 Docker 部署有很好的理解。这是生产部署的最佳实践。
+  - 配置是正确的，表明开发者对生产部署有很好的理解。这是生产部署的最佳实践。
 
 ### `package.json`
 
@@ -108,7 +108,7 @@
   - `dev` 脚本中 `| pino-pretty` 的使用改善了开发体验。
 - **【中等问题】误导性且损坏的开发迁移脚本:**
   - **问题描述:** `package.json` 中的 `db:migrate` 脚本 (`"tsx scripts/migrate.ts"`) 指向一个不存在的文件，因此是损坏的。
-  - **分析:** 经过对 `Dockerfile` 和 `entrypoint.sh` 的审查，发现生产部署流程**并未使用**此脚本。部署时通过 `npx prisma migrate deploy` 命令来执行迁移，这是一个健壮的生产实践。因此，这个损坏的脚本不会影响生产部署。
+  - **分析:** 生产部署流程通过 `npx prisma migrate deploy` 命令来执行迁移，这是一个健壮的生产实践。因此，这个损坏的脚本不会影响生产部署。
   - **风险:** 尽管不影响生产，但它严重误导了开发流程。任何尝试使用 `pnpm run db:migrate` 的新开发者都会遇到失败，增加了项目上手的难度和困惑。
   - **修复建议:**
     1.  **清理 `package.json`:** 为了保持开发和生产环境的一致性，并为开发者提供清晰的指导，建议将此脚本修复。最简单的做法是将其替换为标准的开发迁移命令：`"db:migrate": "prisma migrate dev"`。

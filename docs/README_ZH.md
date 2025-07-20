@@ -33,7 +33,7 @@ You can read this document in [English](README.md).
 为了更好地理解本项目，我们建议按以下顺序探索文件：
 
 1.  **`prisma/schema.prisma`**: 定义了数据库结构，用于存储 API 密钥 (`ApiKey`) 和动态配置 (`Setting`)。
-2.  **`src/lib/settings.ts`**: 负责从数据库中获取和缓存所有应用配置的服务。这是所有配置的“单一真实来源”。
+2.  **`src/lib/settings.ts`**: 负责从数据库中获取和缓存所有应用配置的服务。这是所有配置的"单一真实来源"。
 3.  **`src/lib/key-manager.ts`**: `KeyManager` 类，负责所有 API 密钥的管理。它**只从数据库**加载密钥，处理轮换和失败跟踪。
 4.  **`src/middleware.ts`**: 所有请求的入口。它使用 `settings.ts` 在每个请求中动态获取认证令牌。
 5.  **`src/app/admin`**: 管理后台的代码，包括 UI 组件（如 `KeyTable.tsx`, `ConfigForm.tsx`）和包含所有管理逻辑的 `actions.ts` 文件。
@@ -94,7 +94,7 @@ pnpm dev
 首次运行时，本应用没有任何 API 密钥或安全认证令牌。
 
 1.  **访问仪表盘**: 打开 [http://localhost:3000/admin](http://localhost:3000/admin)。系统将提示您输入密码。
-2.  **初始登录**: 由于 `AUTH_TOKEN` 初始为空，您可以**输入任何值**（或留空）并点击“Login”来登录。
+2.  **初始登录**: 由于 `AUTH_TOKEN` 初始为空，您可以**输入任何值**（或留空）并点击"Login"来登录。
 3.  **保护您的仪表盘**:
     - 导航到 **Configuration** (配置) 标签页。
     - 在 "Auth Token" 字段中，输入一个新的、强壮的、秘密的密码。
@@ -153,7 +153,7 @@ pnpm dev
 ### 5. 首次设置
 
 - 部署完成后，访问您的新 Vercel URL (例如, `https://your-project-name.vercel.app`)。
-- 遵循与本地开发指南中完全相同的“首次通过 Web UI 设置”步骤，来设置您的管理员密码并添加您的 Gemini API 密钥。
+- 遵循与本地开发指南中完全相同的"首次通过 Web UI 设置"步骤，来设置您的管理员密码并添加您的 Gemini API 密钥。
 
 ### 6. 在 Vercel 上配置 Cron 作业
 
@@ -168,47 +168,6 @@ pnpm dev
 
 您的应用现已在 Vercel 上完全部署和配置完毕。
 
-## 使用 Docker 部署
-
-本项目是一个**有状态应用**，需要一个持久化的数据库。项目提供的 `Dockerfile` 和 `docker-compose.yml` 已为生产部署进行了优化。
-
-### 部署原则
-
-- **动态配置**: 应用被设计为在运行时通过 Web UI 进行配置。Docker 镜像本身是通用的，不包含任何秘密信息。
-- **数据持久化**: `docker-compose.yml` 文件已配置为将本地的 `./data` 目录挂载到容器内的 `/app/data` 目录。这确保了您的 SQLite 数据库（以及所有配置）在容器重启后依然存在。
-- **自动迁移**: `entrypoint.sh` 脚本会在每次容器启动时自动运行数据库迁移命令 (`prisma migrate deploy`)，确保您的数据库结构始终是最新版本。
-
-### 使用 Docker Compose 运行
-
-1.  **创建并配置 `.env` 文件**:
-
-    为您的生产环境创建一个 `.env` 文件。`docker-compose.yml` 文件已配置为加载此文件。
-
-    - **`DATABASE_URL` (强制性)**: 此变量是必需的。Compose 设置已配置为将数据库放置在 `/app/data` 的持久卷中。
-    - **`CRON_SECRET` (推荐)**: 要使用外部健康检查功能，您必须设置一个安全的 secret token。
-
-    您的 `.env` 文件应如下所示：
-
-    ```env
-    # 强制性：生产数据库在容器内的路径
-    DATABASE_URL="file:/app/data/prod.db"
-
-    # 推荐：用于 cron 作业端点的长的、随机的 secret
-    CRON_SECRET="your-long-random-secret-token"
-    ```
-
-    **重要提示**：对于 Docker 部署，您只需要设置 `DATABASE_URL` 和 `CRON_SECRET`。像 `POSTGRES_PRISMA_URL` 这样的变量仅用于 Vercel 部署。所有其他设置都在部署后通过 Web UI 进行管理。
-
-2.  **构建并运行容器**:
-
-    ```bash
-    docker-compose up --build -d
-    ```
-
-3.  **执行首次设置**: 遵循与本地开发指南中相同的“首次通过 Web UI 设置”步骤，但请使用您服务器的 IP 地址访问应用 (例如, `http://YOUR_SERVER_IP:3000`)。
-
-4.  **(可选) 配置 Cron 作业**: 为了启用失效 API 密钥的自动重新激活，请遵循下面的“外部 Cron 作业健康检查”部分的说明。
-
 ## 外部 Cron 作业健康检查
 
 本应用依赖一个外部的 cron 作业来定期检查非活动 API 密钥的健康状况并重新激活它们。应用为此提供了一个安全的端点。
@@ -218,13 +177,13 @@ pnpm dev
 为了保护 cron 端点，您必须设置 `CRON_SECRET` 环境变量。
 
 - 对于**本地开发**，请将其添加到您的 `.env.local` 文件中。
-- 对于**Docker 部署**，请按照“使用 Docker 部署”部分的说明将其添加到 `.env` 文件中。
+- 对于**Vercel 部署**，请按照"使用 Vercel 部署"部分的说明将其添加到环境变量中。
 
 请为这个值选择一个长的、随机的且难以猜测的字符串。
 
 ### 2. 配置您的 Cron 服务
 
-您需要在您的服务器上或使用第三方服务（如 `cron-job.org` 或您托管平台的功能，如 Coolify）来设置一个 cron 作业。
+您需要在您的服务器上或使用第三方服务（如 `cron-job.org` 或您托管平台的功能）来设置一个 cron 作业。
 
 该作业应配置为定期运行一个 `curl` 命令。我们建议**每小时运行一次**。
 
@@ -239,22 +198,10 @@ curl -X GET -H "Authorization: Bearer YOUR_CRON_SECRET" http://YOUR_APP_URL/api/
 
 此设置可确保您的密钥得到定期检查和维护，而无需在应用内部集成调度程序。
 
-## 使用 GitHub Actions 进行 CI/CD
-
-项目包含的 GitHub Actions 工作流是为现代化的、无需配置的部署流程而设计的。
-
-- **它做什么**: 每当有代码推送到 `master` 分支时，该 action 会构建一个**通用的、无配置的** Docker 镜像，并将其推送到 GitHub Container Registry (`ghcr.io`)。
-- **无需 Secrets**: 该工作流**不**需要任何诸如 `GEMINI_API_KEYS` 或 `AUTH_TOKEN` 之类的秘密信息。它构建的镜像是普适的。
-- **如何使用**:
-  1.  Fork 本仓库。
-  2.  GitHub Action 将自动运行，并将镜像推送到 `ghcr.io/YOUR_USERNAME/gemini-balance-nextjs`。
-  3.  在您的服务器上，您只需拉取最新的镜像 (`docker pull ghcr.io/YOUR_USERNAME/gemini-balance-nextjs:latest`) 并重启您的 Docker Compose 服务即可完成更新。
-  4.  为了实现全自动化部署，您可以使用像 [Watchtower](https://containrrr.dev/watchtower/) 这样的服务，或您托管平台（如 Coolify）提供的 webhook，来自动拉取新镜像并重新部署。
-
-### 6. 探索应用
+## 探索应用
 
 - **管理仪表盘**: 打开 [http://localhost:3000/admin](http://localhost:3000/admin) 并使用您在 UI 中配置的 `AUTH_TOKEN` 登录。
-- **API 端点**: 使用 `curl` 或 Postman 等工具与 API 端点交互，请提供您在“Allowed API Tokens”中配置的令牌。
+- **API 端点**: 使用 `curl` 或 Postman 等工具与 API 端点交互，请提供您在"Allowed API Tokens"中配置的令牌。
 
 **Gemini/v1beta `curl` 示例:**
 
