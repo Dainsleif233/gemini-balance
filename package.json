@@ -44,7 +44,7 @@
         "@tailwindcss/postcss": "^4",
         "@types/bcrypt": "^5.0.2",
         "@types/negotiator": "^0.6.4",
-        "@types/node": "^20",
+        "@types/node": "^20.19.9",
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "eslint": "^9",
