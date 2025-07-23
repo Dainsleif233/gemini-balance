@@ -1,7 +1,7 @@
-import { randomBytes } from 'crypto';
-import { writeFileSync } from 'fs';
+const crypto = require('crypto');
+const fs = require('fs');
 
-const randomStr = randomBytes(32).toString('hex');
-writeFileSync('.env.production', `CRON_SECRET=${randomStr}\n`);
+const randomStr = crypto.randomBytes(32).toString('hex');
+fs.writeFileSync('.env.production', `CRON_SECRET=${randomStr}\n`);
 
 console.log('✅ Generated CRON_SECRET');
