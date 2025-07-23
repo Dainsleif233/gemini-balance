@@ -5,11 +5,8 @@ const nextConfig: NextConfig = {
   compress: true,
   poweredByHeader: false,
   
-  // 实验性功能
-  experimental: {
-    // 启用服务器组件的优化
-    serverComponentsExternalPackages: ['@prisma/client'],
-  },
+  // 服务器外部包配置
+  serverExternalPackages: ['@prisma/client'],
   
   // 输出配置
   output: 'standalone',
