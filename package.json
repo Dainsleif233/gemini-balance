@@ -2,10 +2,9 @@
     "name": "gemini-balance-nextjs",
     "version": "0.1.0",
     "private": true,
-    "packageManager": "pnpm@10.13.1",
     "scripts": {
         "dev": "next dev | pino-pretty",
-        "build": "next build",
+        "build": "node ./generate-env.js && npx prisma migrate deploy && next build",
         "start": "next start",
         "lint": "next lint",
         "db:migrate": "prisma migrate dev",

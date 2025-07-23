@@ -49,11 +49,11 @@ You can read this document in [English](README.md).
 
 - **开发环境**: 在修改了 `prisma/schema.prisma` 文件后，运行此命令来创建和应用新的迁移。
   ```bash
-  pnpm run db:migrate
+  npm run db:migrate
   ```
 - **生产环境**: 在部署新版本时，此命令会安全地应用所有待处理的迁移，而不会重置数据。
   ```bash
-  pnpm prisma migrate deploy
+  npx prisma migrate deploy
   ```
 
 ### 2. 安装依赖
@@ -61,12 +61,12 @@ You can read this document in [English](README.md).
 进入项目目录并安装所需依赖包。
 
 ```bash
-pnpm install
+npm install
 ```
 
 ### 3. 初始化数据库
 
-本项目使用 Prisma 进行数据库管理。运行 `pnpm run db:migrate` 命令来创建您的第一个迁移并初始化数据库。
+本项目使用 Prisma 进行数据库管理。运行 `npm run db:migrate` 命令来创建您的第一个迁移并初始化数据库。
 
 这将在 `prisma/` 目录下创建一个 `dev.db` 文件。
 
@@ -74,7 +74,7 @@ pnpm install
 
 创建一个 `.env.local` 文件。应用需要以下变量来连接数据库。
 
-- **`DATABASE_URL`**: 您的数据库连接字符串。默认的 `pnpm prisma migrate dev` 命令会在 `prisma/dev.db` 创建一个 SQLite 数据库。
+- **`DATABASE_URL`**: 您的数据库连接字符串。默认的 `npm run db:migrate` 命令会在 `prisma/dev.db` 创建一个 SQLite 数据库。
   ```
   DATABASE_URL="file:./prisma/dev.db"
   ```
@@ -86,7 +86,7 @@ pnpm install
 启动 Next.js 开发服务器。
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 ### 5. 首次通过 Web UI 设置

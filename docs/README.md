@@ -48,7 +48,7 @@ Follow these steps to get the project running locally.
 Navigate to the project directory and install the necessary packages.
 
 ```bash
-pnpm install
+npm install
 ```
 
 ### 2. Initialize the Database
@@ -56,7 +56,7 @@ pnpm install
 This project uses Prisma for database management. Run the following command to create the SQLite database and apply the schema.
 
 ```bash
-pnpm prisma migrate dev
+npm run db:migrate
 ```
 
 This will create a `prisma/dev.db` file.
@@ -65,7 +65,7 @@ This will create a `prisma/dev.db` file.
 
 Create a `.env.local` file. The following variable is required for the application to connect to the database.
 
-- **`DATABASE_URL`**: The connection string for your database. The default `pnpm prisma migrate dev` command will create a SQLite database at `prisma/dev.db`.
+- **`DATABASE_URL`**: The connection string for your database. The default `npm run db:migrate` command will create a SQLite database at `prisma/dev.db`.
   ```
   DATABASE_URL="file:./prisma/dev.db"
   ```
@@ -77,7 +77,7 @@ You might also set `GOOGLE_API_HOST` if you need to use a proxy for the Google A
 Start the Next.js development server.
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 ### 5. First-Time Setup via Web UI
