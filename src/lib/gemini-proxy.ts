@@ -2,11 +2,11 @@ import { getKeyManager } from "@/lib/key-manager";
 import { Agent } from "http";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "./db";
 import {
   buildGeminiRequest,
   formatGoogleModelsToOpenAI,
 } from "./google-adapter";
+import { logService } from "@/lib/log-service";
 import logger from "./logger";
 import { getSettings } from "./settings";
 
@@ -104,6 +104,20 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
     if (
       geminiResponse.headers.get("Content-Type")?.includes("text/event-stream")
     ) {
+      // Record the log for streaming response before returning
+       isSuccess = true;
+       statusCode = geminiResponse.status;
+       const latency = Date.now() - startTime;
+       
+       // Use fire-and-forget pattern for logging to avoid blocking the stream
+       logService.logRequestAsync({
+         apiKey,
+         model,
+         statusCode,
+         isSuccess,
+         latency,
+       });
+
       return new NextResponse(geminiResponse.body, {
         headers: {
           "Content-Type": "text/event-stream",
@@ -122,13 +136,11 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
       const errorBody = await geminiResponse.json();
       const errorMessage = errorBody.error?.message || "Unknown error";
 
-      await prisma.errorLog.create({
-        data: {
-          apiKey: apiKey,
-          errorType: "gemini_api_error",
-          errorMessage: errorMessage,
-          errorDetails: JSON.stringify(errorBody),
-        },
+      logService.logErrorAsync({
+        apiKey,
+        errorType: "gemini_api_error",
+        errorMessage: errorMessage,
+        errorDetails: JSON.stringify(errorBody),
       });
 
       logger.error(
@@ -205,16 +217,15 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
       { status: 500 }
     );
   } finally {
-    if (statusCode) {
+    // Only log if we haven't already logged for streaming responses
+    if (statusCode && !isSuccess) { // Only log non-streaming responses or errors
       const latency = Date.now() - startTime;
-      await prisma.requestLog.create({
-        data: {
-          apiKey: apiKey,
-          model: model,
-          statusCode: statusCode,
-          isSuccess: isSuccess,
-          latency: latency,
-        },
+      logService.logRequestAsync({
+        apiKey,
+        model,
+        statusCode,
+        isSuccess,
+        latency,
       });
     }
   }

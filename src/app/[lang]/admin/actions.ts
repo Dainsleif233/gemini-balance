@@ -157,9 +157,9 @@ export async function getKeyUsageDetails(apiKey: string) {
   const t = dictionary.keys.table.usage;
 
   try {
-    // In the DB, we only store the full API key, not the slice.
-    // The original code had a bug where it was searching by the slice.
-    const where = { apiKey: apiKey };
+    // Since we store only the last 4 characters of API keys in the database,
+    // we need to use the last 4 characters for querying
+    const where = { apiKey: apiKey.slice(-4) };
 
     const totalCalls = await prisma.requestLog.count({ where });
     const successfulCalls = await prisma.requestLog.count({
@@ -547,7 +547,9 @@ export async function clearAllLogs(logType: LogType) {
 }
 
 async function getStats(apiKey?: string): Promise<Stats> {
-  const where = apiKey ? { apiKey } : {};
+  // Since we store only the last 4 characters of API keys in the database,
+  // we need to use the last 4 characters for querying
+  const where = apiKey ? { apiKey: apiKey.slice(-4) } : {};
   const now = new Date();
   const oneMinuteAgo = new Date(now.getTime() - 1 * 60 * 1000);
   const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
