@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getKeyManager } from "@/lib/key-manager";
 import { getSettings } from "@/lib/settings";
+import { logService } from "@/lib/log-service";
 import {
   EnhancedGenerateContentResponse,
   GenerateContentRequest,
@@ -65,15 +66,16 @@ export async function callGeminiApi({
       const stream = sdkStreamToReadableStream(result.stream);
 
       const latency = Date.now() - startTime;
-      await prisma.requestLog.create({
-        data: {
-          apiKey: apiKey.slice(-4),
-          model,
-          statusCode: 200, // Success
-          isSuccess: true,
-          latency,
-        },
+      
+      // Use async logging for streaming responses to avoid blocking
+      logService.logRequestAsync({
+        apiKey,
+        model,
+        statusCode: 200,
+        isSuccess: true,
+        latency,
       });
+      
       keyManager.resetKeyFailureCount(apiKey);
 
       return new Response(stream, {
@@ -98,22 +100,20 @@ export async function callGeminiApi({
         statusCode = error.httpStatus;
       }
 
-      await prisma.requestLog.create({
-        data: {
-          apiKey: apiKey.slice(-4),
-          model,
-          statusCode,
-          isSuccess: false,
-          latency,
-        },
+      // Log request and error using the log service
+      logService.logRequestAsync({
+        apiKey,
+        model,
+        statusCode,
+        isSuccess: false,
+        latency,
       });
-      await prisma.errorLog.create({
-        data: {
-          apiKey: apiKey.slice(-4),
-          errorType: `SDK Error (Attempt ${i + 1})`,
-          errorMessage,
-          errorDetails: JSON.stringify(error),
-        },
+      
+      logService.logErrorAsync({
+        apiKey,
+        errorType: `SDK Error (Attempt ${i + 1})`,
+        errorMessage,
+        errorDetails: JSON.stringify(error),
       });
 
       if (statusCode >= 400 && statusCode < 500) {
@@ -127,12 +127,11 @@ export async function callGeminiApi({
     }
   }
 
-  await prisma.errorLog.create({
-    data: {
-      errorType: "General Error",
-      errorMessage: "All API keys failed or the service is unavailable.",
-      errorDetails: JSON.stringify(lastError),
-    },
+  logService.logErrorAsync({
+    apiKey: "unknown",
+    errorType: "General Error",
+    errorMessage: "All API keys failed or the service is unavailable.",
+    errorDetails: JSON.stringify(lastError),
   });
 
   return NextResponse.json(
