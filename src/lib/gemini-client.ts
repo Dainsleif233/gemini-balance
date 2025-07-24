@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db";
 import { getKeyManager } from "@/lib/key-manager";
-import { getSettings } from "@/lib/settings";
 import { logService } from "@/lib/log-service";
 import {
   EnhancedGenerateContentResponse,
@@ -51,7 +50,7 @@ export async function callGeminiApi({
   request,
 }: GeminiClientRequest): Promise<Response> {
   const keyManager = await getKeyManager();
-  const apiKey = keyManager.getNextWorkingKey();
+  const apiKey = await keyManager.getNextWorkingKey();
   const startTime = Date.now();
 
   try {

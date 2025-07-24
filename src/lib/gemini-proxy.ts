@@ -71,7 +71,7 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
 
   try {
     const keyManager = await getKeyManager();
-    apiKey = keyManager.getNextWorkingKey();
+    apiKey = await keyManager.getNextWorkingKey();
 
     // Reconstruct the original Gemini API URL
     const url = new URL(request.url);

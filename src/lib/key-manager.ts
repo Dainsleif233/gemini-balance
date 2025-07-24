@@ -3,6 +3,11 @@ import { prisma } from "./db";
 import logger from "./logger";
 import { getSettings } from "./settings";
 
+interface KeyRequestCount {
+  key: string;
+  requestCount: number;
+}
+
 /**
  * Manages a pool of API keys, providing round-robin selection,
  * failure tracking, and automatic recovery.
@@ -36,19 +41,56 @@ export class KeyManager {
     return failures !== undefined && failures < this.maxFailures;
   }
 
-  public getNextWorkingKey(): string {
+  public async getKeyRequestCounts(): Promise<KeyRequestCount[]> {
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    
+    const requestCounts = await Promise.all(
+      this.keys.map(async (key) => {
+        const count = await prisma.requestLog.count({
+          where: {
+            apiKey: key.slice(-4), // Use last 4 characters as stored in DB
+            createdAt: {
+              gte: oneMinuteAgo
+            }
+          }
+        });
+        return { key, requestCount: count };
+      })
+    );
+    
+    return requestCounts;
+  }
+
+  public async getNextWorkingKey(): Promise<string> {
     if (this.keys.length === 0) {
       throw new Error("No API keys available in the key manager.");
     }
-    for (let i = 0; i < this.keys.length; i++) {
-      const key = this.keyCycle.next().value;
-      if (this.isKeyValid(key)) {
-        return key;
-      }
+    
+    // Get working keys
+    const workingKeys = this.keys.filter(key => this.isKeyValid(key));
+    if (workingKeys.length === 0) {
+      throw new Error(
+        "All API keys are currently failing. Please check their validity or reset failure counts."
+      );
     }
-    throw new Error(
-      "All API keys are currently failing. Please check their validity or reset failure counts."
+    
+    // Get request counts for working keys
+    const requestCounts = await this.getKeyRequestCounts();
+    const workingKeysCounts = requestCounts.filter(item => 
+      workingKeys.includes(item.key)
     );
+    
+    // Find minimum request count
+    const minRequestCount = Math.min(...workingKeysCounts.map(item => item.requestCount));
+    
+    // Get keys with minimum request count
+    const keysWithMinRequests = workingKeysCounts
+      .filter(item => item.requestCount === minRequestCount)
+      .map(item => item.key);
+    
+    // Randomly select from keys with minimum request count
+    const randomIndex = Math.floor(Math.random() * keysWithMinRequests.length);
+    return keysWithMinRequests[randomIndex];
   }
 
   public handleApiFailure(key: string): void {
