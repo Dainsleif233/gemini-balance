@@ -41,8 +41,8 @@ function isApiError(error: unknown): error is { httpStatus?: number } {
 }
 
 /**
- * Calls the Gemini API using the official SDK with built-in retry logic,
- * key management, and logging.
+ * Calls the Gemini API using the official SDK without retry logic.
+ * If the API call fails, it returns an error immediately.
  *
  * @returns A Response object with the Gemini API's stream or an error.
  */
@@ -51,94 +51,81 @@ export async function callGeminiApi({
   request,
 }: GeminiClientRequest): Promise<Response> {
   const keyManager = await getKeyManager();
-  const { MAX_FAILURES } = await getSettings();
-  let lastError: unknown = null;
+  const apiKey = keyManager.getNextWorkingKey();
+  const startTime = Date.now();
 
-  for (let i = 0; i < MAX_FAILURES; i++) {
-    const apiKey = keyManager.getNextWorkingKey();
-    const startTime = Date.now();
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const generativeModel = genAI.getGenerativeModel({ model });
 
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const generativeModel = genAI.getGenerativeModel({ model });
+    const result = await generativeModel.generateContentStream(request);
+    const stream = sdkStreamToReadableStream(result.stream);
 
-      const result = await generativeModel.generateContentStream(request);
-      const stream = sdkStreamToReadableStream(result.stream);
+    const latency = Date.now() - startTime;
+    
+    // Use async logging for streaming responses to avoid blocking
+    logService.logRequestAsync({
+      apiKey,
+      model,
+      statusCode: 200,
+      isSuccess: true,
+      latency,
+    });
+    
+    keyManager.resetKeyFailureCount(apiKey);
 
-      const latency = Date.now() - startTime;
-      
-      // Use async logging for streaming responses to avoid blocking
-      logService.logRequestAsync({
-        apiKey,
-        model,
-        statusCode: 200,
-        isSuccess: true,
-        latency,
-      });
-      
-      keyManager.resetKeyFailureCount(apiKey);
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  } catch (error) {
+    const latency = Date.now() - startTime;
+    let statusCode = 500;
+    let errorMessage = "An unknown error occurred";
 
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        },
-      });
-    } catch (error) {
-      lastError = error;
-      const latency = Date.now() - startTime;
-      let statusCode = 500;
-      let errorMessage = "An unknown error occurred";
-
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-
-      // Check for Google API specific error properties
-      if (isApiError(error) && error.httpStatus) {
-        statusCode = error.httpStatus;
-      }
-
-      // Log request and error using the log service
-      logService.logRequestAsync({
-        apiKey,
-        model,
-        statusCode,
-        isSuccess: false,
-        latency,
-      });
-      
-      logService.logErrorAsync({
-        apiKey,
-        errorType: `SDK Error (Attempt ${i + 1})`,
-        errorMessage,
-        errorDetails: JSON.stringify(error),
-      });
-
-      if (statusCode >= 400 && statusCode < 500) {
-        keyManager.handleApiFailure(apiKey);
-        // Also increment the failCount in the database
-        await prisma.apiKey.update({
-          where: { key: apiKey },
-          data: { failCount: { increment: 1 } },
-        });
-      }
+    if (error instanceof Error) {
+      errorMessage = error.message;
     }
+
+    // Check for Google API specific error properties
+    if (isApiError(error) && error.httpStatus) {
+      statusCode = error.httpStatus;
+    }
+
+    // Log request and error using the log service
+    logService.logRequestAsync({
+      apiKey,
+      model,
+      statusCode,
+      isSuccess: false,
+      latency,
+    });
+    
+    logService.logErrorAsync({
+      apiKey,
+      errorType: "SDK Error",
+      errorMessage,
+      errorDetails: JSON.stringify(error),
+    });
+
+    if (statusCode >= 400 && statusCode < 500) {
+      keyManager.handleApiFailure(apiKey);
+      // Also increment the failCount in the database
+      await prisma.apiKey.update({
+        where: { key: apiKey },
+        data: { failCount: { increment: 1 } },
+      });
+    }
+
+    return NextResponse.json(
+      {
+        error: errorMessage,
+        details: JSON.stringify(error),
+      },
+      { status: statusCode }
+    );
   }
-
-  logService.logErrorAsync({
-    apiKey: "unknown",
-    errorType: "General Error",
-    errorMessage: "All API keys failed or the service is unavailable.",
-    errorDetails: JSON.stringify(lastError),
-  });
-
-  return NextResponse.json(
-    {
-      error: "Service unavailable",
-      details: lastError ? JSON.stringify(lastError) : "Unknown error",
-    },
-    { status: 503 }
-  );
 }
