@@ -1,7 +1,7 @@
-import { cycle } from "itertools";
 import { prisma } from "./db";
 import logger from "./logger";
 import { getSettings } from "./settings";
+import { getRedisClient } from "./redis";
 
 interface KeyRequestCount {
   key: string;
@@ -14,7 +14,6 @@ interface KeyRequestCount {
  */
 export class KeyManager {
   private keys: readonly string[];
-  private keyCycle: IterableIterator<string>;
   private failureCounts: Map<string, number>;
   private lastFailureTimes: Map<string, Date>;
   private readonly maxFailures: number;
@@ -27,7 +26,6 @@ export class KeyManager {
       );
     }
     this.keys = Object.freeze([...initialKeys]);
-    this.keyCycle = cycle(this.keys);
     this.failureCounts = new Map(this.keys.map((key) => [key, 0]));
     this.lastFailureTimes = new Map();
     this.maxFailures = maxFailures;
@@ -42,23 +40,66 @@ export class KeyManager {
   }
 
   public async getKeyRequestCounts(): Promise<KeyRequestCount[]> {
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    
-    const requestCounts = await Promise.all(
-      this.keys.map(async (key) => {
-        const count = await prisma.requestLog.count({
-          where: {
-            apiKey: key.slice(-4), // Use last 4 characters as stored in DB
-            createdAt: {
-              gte: oneMinuteAgo
-            }
+    try {
+      const redis = getRedisClient();
+      const currentMinute = Math.floor(Date.now() / 60000);
+      
+      const requestCounts = await Promise.all(
+        this.keys.map(async (key) => {
+          const keySuffix = key.slice(-4);
+          const redisKey = `req:${keySuffix}:${currentMinute}`;
+          
+          try {
+            const count = await redis.get(redisKey);
+            const countValue = count ? parseInt(count.toString(), 10) : 0;
+            return { key, requestCount: countValue };
+          } catch (error) {
+            logger.error({ error, key: `...${keySuffix}` }, 'Failed to get key usage from Redis');
+            return { key, requestCount: 0 };
           }
-        });
-        return { key, requestCount: count };
-      })
-    );
-    
-    return requestCounts;
+        })
+      );
+      
+      return requestCounts;
+    } catch (error) {
+      logger.error({ error }, 'Failed to connect to Redis, falling back to database');
+      // Fallback to database
+      const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+      
+      const requestCounts = await Promise.all(
+        this.keys.map(async (key) => {
+          const count = await prisma.requestLog.count({
+            where: {
+              apiKey: key.slice(-4),
+              createdAt: {
+                gte: oneMinuteAgo
+              }
+            }
+          });
+          return { key, requestCount: count };
+        })
+      );
+      
+      return requestCounts;
+    }
+  }
+
+  public async incrementKeyUsage(key: string): Promise<void> {
+    try {
+      const redis = getRedisClient();
+      const currentMinute = Math.floor(Date.now() / 60000);
+      const keySuffix = key.slice(-4);
+      const redisKey = `req:${keySuffix}:${currentMinute}`;
+      
+      // Upstash Redis doesn't have pipeline, use individual commands
+      await redis.incr(redisKey);
+      await redis.expire(redisKey, 120); // Expire after 2 minutes
+      
+      logger.debug({ key: `...${keySuffix}`, minute: currentMinute }, 'Incremented key usage in Redis');
+    } catch (error) {
+      logger.error({ error, key: `...${key.slice(-4)}` }, 'Failed to increment key usage in Redis');
+      // Don't throw error, let the request continue
+    }
   }
 
   public async getNextWorkingKey(): Promise<string> {

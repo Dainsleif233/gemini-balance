@@ -73,6 +73,9 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
     const keyManager = await getKeyManager();
     apiKey = await keyManager.getNextWorkingKey();
 
+    // Increment key usage in Redis for real-time tracking
+    keyManager.incrementKeyUsage(apiKey);
+
     // Reconstruct the original Gemini API URL
     const url = new URL(request.url);
     const modelPath = url.pathname.replace(pathPrefix, "");

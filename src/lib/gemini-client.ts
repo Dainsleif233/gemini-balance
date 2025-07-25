@@ -53,6 +53,9 @@ export async function callGeminiApi({
   const apiKey = await keyManager.getNextWorkingKey();
   const startTime = Date.now();
 
+  // Increment key usage in Redis for real-time tracking
+  keyManager.incrementKeyUsage(apiKey);
+
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const generativeModel = genAI.getGenerativeModel({ model });
