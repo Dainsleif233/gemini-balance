@@ -41,7 +41,7 @@ export class KeyManager {
 
   public async getKeyRequestCounts(): Promise<KeyRequestCount[]> {
     try {
-      const redis = getRedisClient();
+      const redis = await getRedisClient();
       const currentMinute = Math.floor(Date.now() / 60000);
       
       // Use pipeline for batch operations
@@ -100,7 +100,7 @@ export class KeyManager {
     
     while (retryCount <= maxRetries) {
       try {
-        const redis = getRedisClient();
+        const redis = await getRedisClient();
         const currentMinute = Math.floor(Date.now() / 60000);
         const keySuffix = key.slice(-4);
         const redisKey = `req:${keySuffix}:${currentMinute}`;

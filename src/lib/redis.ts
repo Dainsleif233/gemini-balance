@@ -2,8 +2,10 @@ import Redis from 'ioredis';
 import logger from './logger';
 
 let redis: Redis | null = null;
+let isConnecting = false;
+let connectionPromise: Promise<void> | null = null;
 
-export function getRedisClient(): Redis {
+export async function getRedisClient(): Promise<Redis> {
   if (!redis) {
     const redisUrl = process.env.REDIS_URL;
     
@@ -19,6 +21,7 @@ export function getRedisClient(): Redis {
       commandTimeout: 5000,
       family: 4, // Use IPv4
       keepAlive: 30000,
+      enableReadyCheck: true,
     });
 
     redis.on('connect', () => {
@@ -46,6 +49,23 @@ export function getRedisClient(): Redis {
     });
   }
 
+  // Ensure connection is established
+  if (!isConnecting && redis.status !== 'ready') {
+    isConnecting = true;
+    connectionPromise = redis.connect().then(() => {
+      isConnecting = false;
+      logger.info('Redis connection established');
+    }).catch((error) => {
+      isConnecting = false;
+      logger.error({ error }, 'Failed to establish Redis connection');
+      throw error;
+    });
+  }
+
+  if (connectionPromise) {
+    await connectionPromise;
+  }
+
   return redis;
 }
 
@@ -59,10 +79,7 @@ export async function closeRedisConnection(): Promise<void> {
 
 export async function isRedisHealthy(): Promise<boolean> {
   try {
-    if (!redis) {
-      return false;
-    }
-    
+    const redis = await getRedisClient();
     const result = await redis.ping();
     return result === 'PONG';
   } catch (error) {
@@ -73,10 +90,7 @@ export async function isRedisHealthy(): Promise<boolean> {
 
 export async function getRedisInfo(): Promise<{ connected: boolean; status: string }> {
   try {
-    if (!redis) {
-      return { connected: false, status: 'not_initialized' };
-    }
-    
+    const redis = await getRedisClient();
     const isHealthy = await isRedisHealthy();
     return {
       connected: isHealthy,
