@@ -44,21 +44,31 @@ export class KeyManager {
       const redis = getRedisClient();
       const currentMinute = Math.floor(Date.now() / 60000);
       
-      const requestCounts = await Promise.all(
-        this.keys.map(async (key) => {
-          const keySuffix = key.slice(-4);
-          const redisKey = `req:${keySuffix}:${currentMinute}`;
-          
-          try {
-            const count = await redis.get(redisKey);
-            const countValue = count ? parseInt(count.toString(), 10) : 0;
-            return { key, requestCount: countValue };
-          } catch (error) {
-            logger.error({ error, key: `...${keySuffix}` }, 'Failed to get key usage from Redis');
-            return { key, requestCount: 0 };
-          }
-        })
-      );
+      // Use pipeline for batch operations
+      const pipeline = redis.pipeline();
+      const redisKeys: string[] = [];
+      
+      this.keys.forEach((key) => {
+        const keySuffix = key.slice(-4);
+        const redisKey = `req:${keySuffix}:${currentMinute}`;
+        redisKeys.push(redisKey);
+        pipeline.get(redisKey);
+      });
+      
+      const results = await pipeline.exec();
+      
+      if (!results) {
+        throw new Error('Pipeline execution failed');
+      }
+      
+      const requestCounts = this.keys.map((key, index) => {
+        const [error, count] = results[index];
+        if (error) {
+          logger.error({ error, key: `...${key.slice(-4)}` }, 'Failed to get key usage from Redis');
+          return { key, requestCount: 0 };
+        }
+        return { key, requestCount: parseInt(count as string || '0', 10) };
+      });
       
       return requestCounts;
     } catch (error) {
@@ -85,20 +95,63 @@ export class KeyManager {
   }
 
   public async incrementKeyUsage(key: string): Promise<void> {
-    try {
-      const redis = getRedisClient();
-      const currentMinute = Math.floor(Date.now() / 60000);
-      const keySuffix = key.slice(-4);
-      const redisKey = `req:${keySuffix}:${currentMinute}`;
-      
-      // Upstash Redis doesn't have pipeline, use individual commands
-      await redis.incr(redisKey);
-      await redis.expire(redisKey, 120); // Expire after 2 minutes
-      
-      logger.debug({ key: `...${keySuffix}`, minute: currentMinute }, 'Incremented key usage in Redis');
-    } catch (error) {
-      logger.error({ error, key: `...${key.slice(-4)}` }, 'Failed to increment key usage in Redis');
-      // Don't throw error, let the request continue
+    const maxRetries = 2;
+    let retryCount = 0;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        const redis = getRedisClient();
+        const currentMinute = Math.floor(Date.now() / 60000);
+        const keySuffix = key.slice(-4);
+        const redisKey = `req:${keySuffix}:${currentMinute}`;
+        
+        // Use pipeline for atomic operations with timeout
+        const pipeline = redis.pipeline();
+        pipeline.incr(redisKey);
+        pipeline.expire(redisKey, 120); // Expire after 2 minutes
+        
+        const results = await Promise.race([
+          pipeline.exec(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Redis operation timeout')), 3000)
+          )
+        ]);
+        
+        // Check if pipeline execution was successful
+        if (Array.isArray(results)) {
+          const hasError = results.some(([error]) => error !== null);
+          if (hasError) {
+            throw new Error('Pipeline execution had errors');
+          }
+        }
+        
+        logger.debug({ 
+          key: `...${keySuffix}`, 
+          minute: currentMinute,
+          retryCount 
+        }, 'Incremented key usage in Redis');
+        
+        return; // Success, exit the retry loop
+        
+      } catch (error) {
+        retryCount++;
+        const isLastRetry = retryCount > maxRetries;
+        
+        logger.error({ 
+          error, 
+          key: `...${key.slice(-4)}`,
+          retryCount,
+          isLastRetry
+        }, `Failed to increment key usage in Redis (attempt ${retryCount})`);
+        
+        if (isLastRetry) {
+          // Don't throw error, let the request continue
+          return;
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100));
+      }
     }
   }
 
@@ -121,17 +174,55 @@ export class KeyManager {
       workingKeys.includes(item.key)
     );
     
-    // Find minimum request count
-    const minRequestCount = Math.min(...workingKeysCounts.map(item => item.requestCount));
+    // If only one working key, return it directly
+    if (workingKeysCounts.length === 1) {
+      return workingKeysCounts[0].key;
+    }
     
-    // Get keys with minimum request count
-    const keysWithMinRequests = workingKeysCounts
-      .filter(item => item.requestCount === minRequestCount)
+    // Calculate weighted scores (lower is better)
+    // Consider both request count and failure history
+    const keyScores = workingKeysCounts.map(item => {
+      const failureCount = this.failureCounts.get(item.key) || 0;
+      const failurePenalty = failureCount * 0.1; // Small penalty for recent failures
+      const score = item.requestCount + failurePenalty;
+      
+      return {
+        key: item.key,
+        requestCount: item.requestCount,
+        failureCount,
+        score
+      };
+    });
+    
+    // Sort by score (ascending - lower is better)
+    keyScores.sort((a, b) => a.score - b.score);
+    
+    // Find minimum score
+    const minScore = keyScores[0].score;
+    
+    // Get keys with minimum score (within a small tolerance)
+    const tolerance = 0.5;
+    const bestKeys = keyScores
+      .filter(item => item.score <= minScore + tolerance)
       .map(item => item.key);
     
-    // Randomly select from keys with minimum request count
-    const randomIndex = Math.floor(Math.random() * keysWithMinRequests.length);
-    return keysWithMinRequests[randomIndex];
+    // Randomly select from best keys
+    const randomIndex = Math.floor(Math.random() * bestKeys.length);
+    const selectedKey = bestKeys[randomIndex];
+    
+    logger.debug({
+      selectedKey: `...${selectedKey.slice(-4)}`,
+      totalKeys: workingKeys.length,
+      candidateKeys: bestKeys.length,
+      keyScores: keyScores.map(k => ({
+        key: `...${k.key.slice(-4)}`,
+        requests: k.requestCount,
+        failures: k.failureCount,
+        score: k.score
+      }))
+    }, 'Key selection completed');
+    
+    return selectedKey;
   }
 
   public handleApiFailure(key: string): void {
