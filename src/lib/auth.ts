@@ -60,7 +60,7 @@ export async function isAuthenticated(
 
   try {
     const settings = await getSettings();
-    const allowedTokens = settings.ALLOWED_TOKENS.split(",")
+    const allowedTokens = settings.ALLOWED_TOKENS.split(/[,\n]/)
       .map((t) => t.trim())
       .filter(Boolean);
 
