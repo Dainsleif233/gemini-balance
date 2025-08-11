@@ -8,6 +8,8 @@
 
 - 增加Redis支持
 
+- 完善跨域访问
+
 - 修复了一些bug（其中[params携带key](https://github.com/jonthanliu/gemini-balance-nextjs/pull/1)已提交pr）
 
 ### Vercel部署
