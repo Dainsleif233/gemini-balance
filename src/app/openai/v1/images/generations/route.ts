@@ -2,6 +2,17 @@ import { isAuthenticated } from "@/lib/auth";
 import { callImagenApi } from "@/lib/imagen-client";
 import { NextRequest, NextResponse } from "next/server";
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    },
+  });
+}
+
 export async function POST(request: NextRequest): Promise<Response> {
   const authError = await isAuthenticated(request);
   if (authError) {

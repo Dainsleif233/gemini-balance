@@ -126,6 +126,7 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
+          'Access-Control-Allow-Origin': '*'
         },
         status: geminiResponse.status,
       });
@@ -154,7 +155,12 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
         },
         "Error response from Google Gemini API"
       );
-      return NextResponse.json(errorBody, { status: geminiResponse.status });
+      return NextResponse.json(errorBody, { 
+        status: geminiResponse.status,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
+      });
     }
 
     // Success
@@ -169,10 +175,18 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
       const formattedData = formatGoogleModelsToOpenAI(data);
       return NextResponse.json(formattedData, {
         status: geminiResponse.status,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
       });
     }
 
-    return NextResponse.json(data, { status: geminiResponse.status });
+    return NextResponse.json(data, { 
+      status: geminiResponse.status,
+      headers: {
+        'Access-Control-Allow-Origin': '*'
+      },
+    });
   } catch (error) {
     statusCode = 500;
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -193,7 +207,12 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
             status: "Forbidden",
           },
         },
-        { status: 403 }
+        { 
+          status: 403,
+          headers: {
+            'Access-Control-Allow-Origin': '*'
+          },
+        }
       );
     }
 
@@ -210,14 +229,26 @@ export async function proxyRequest(request: NextRequest, pathPrefix: string) {
             status: "Forbidden",
           },
         },
-        { status: 403 }
+        { 
+          status: 403,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-goog-api-key',
+          },
+        }
       );
     }
 
     logger.error({ error }, "Error proxying to Gemini");
     return NextResponse.json(
       { error: "Failed to proxy request to Gemini" },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*'
+        },
+      }
     );
   } finally {
     // Only log if we haven't already logged for streaming responses
